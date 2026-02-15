@@ -1,8 +1,36 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
+
+
+@dataclass
+class IniSetting:
+    key: str
+    value: str
+    comment: str = ""
+    min_val: float | None = None
+    max_val: float | None = None
+    default_val: str | None = None
+
+    @property
+    def value_type(self) -> str:
+        """Infer the type: 'bool', 'int', 'float', or 'str'."""
+        low = self.value.lower()
+        if low in ("true", "false"):
+            return "bool"
+        if re.fullmatch(r"-?\d+", self.value):
+            return "int"
+        if re.fullmatch(r"-?\d+\.\d+", self.value):
+            return "float"
+        return "str"
+
+
+# Keys managed by the mod list — skip in the server settings dialog
+_MOD_KEYS = {"Mods", "WorkshopItems", "Map"}
 
 
 class IniService:
@@ -86,6 +114,86 @@ class IniService:
             os.replace(tmp_path, file_path)
         except BaseException:
             # Clean up temp file on failure
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
+    def read_all_settings(self, file_path: str | Path) -> list[IniSetting]:
+        """Parse all key=value pairs from the INI file with their comments."""
+        lines = self._read_lines(file_path)
+        settings: list[IniSetting] = []
+        comment_lines: list[str] = []
+
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                comment_lines.append(stripped.lstrip("# "))
+            elif "=" in stripped and not stripped.startswith("#"):
+                key, _, value = stripped.partition("=")
+                key = key.strip()
+                if key in _MOD_KEYS:
+                    comment_lines.clear()
+                    continue
+
+                comment = " ".join(comment_lines)
+                comment_lines.clear()
+
+                # Extract Min/Max/Default from comment
+                min_val = max_val = None
+                default_val = None
+                m = re.search(r"Min:\s*([\d.-]+)", comment)
+                if m:
+                    min_val = float(m.group(1))
+                m = re.search(r"Max:\s*([\d.-]+)", comment)
+                if m:
+                    max_val = float(m.group(1))
+                m = re.search(r"Default:\s*(\S+)", comment)
+                if m:
+                    default_val = m.group(1)
+
+                settings.append(IniSetting(
+                    key=key,
+                    value=value,
+                    comment=comment,
+                    min_val=min_val,
+                    max_val=max_val,
+                    default_val=default_val,
+                ))
+            else:
+                # Blank line or other — reset accumulated comments
+                if not stripped:
+                    pass  # keep accumulating across blanks between comment and key
+                else:
+                    comment_lines.clear()
+
+        return settings
+
+    def write_settings(self, file_path: str | Path, changes: dict[str, str]) -> None:
+        """Write changed key=value pairs back to the INI file."""
+        file_path = Path(file_path)
+        lines = self._read_lines(file_path)
+        new_lines: list[str] = []
+
+        for line in lines:
+            stripped = line.strip()
+            if "=" in stripped and not stripped.startswith("#"):
+                key, _, _ = stripped.partition("=")
+                key = key.strip()
+                if key in changes:
+                    new_lines.append(f"{key}={changes[key]}\n")
+                    continue
+            new_lines.append(line)
+
+        fd, tmp_path = tempfile.mkstemp(
+            dir=file_path.parent, suffix=".tmp", prefix=".pz_"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+            os.replace(tmp_path, file_path)
+        except BaseException:
             try:
                 os.unlink(tmp_path)
             except OSError:
