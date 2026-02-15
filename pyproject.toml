@@ -1,0 +1,29 @@
+[project]
+name = "pz-mod-manager"
+version = "0.1.0"
+description = "A desktop application for managing Project Zomboid server mod IDs"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.6,<7",
+    "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-qt>=4.2",
+    "pytest-mock>=3.12",
+]
+
+[project.scripts]
+pz-mod-manager = "pz_mod_manager.app:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
