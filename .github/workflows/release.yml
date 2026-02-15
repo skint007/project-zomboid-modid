@@ -142,7 +142,7 @@ jobs:
           files: release/*
 
   publish-aur:
-    if: false  # TODO: enable when ready to publish to AUR
+    if: true  # TODO: enable when ready to publish to AUR
     needs: release
     runs-on: ubuntu-latest
 
