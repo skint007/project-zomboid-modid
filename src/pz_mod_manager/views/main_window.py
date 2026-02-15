@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QSortFilterProxyModel, Qt, QThread, Signal, QObject
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -75,6 +76,11 @@ class MainWindow(QMainWindow):
         self._setup_connections()
         self._update_status()
 
+        # Auto-open last INI if it still exists
+        last = self._settings.last_ini_path
+        if last and Path(last).is_file():
+            self._load_file(last)
+
     # ── UI Setup ──────────────────────────────────────────────
 
     def _setup_ui(self):
@@ -127,6 +133,9 @@ class MainWindow(QMainWindow):
         self._act_save_as = file_menu.addAction("Save &As...")
         self._act_save_as.setShortcut(QKeySequence("Ctrl+Shift+S"))
         file_menu.addSeparator()
+        self._act_close = file_menu.addAction("&Close INI")
+        self._act_close.setShortcut(QKeySequence("Ctrl+W"))
+        file_menu.addSeparator()
         self._act_exit = file_menu.addAction("E&xit")
         self._act_exit.setShortcut(QKeySequence.StandardKey.Quit)
 
@@ -139,6 +148,10 @@ class MainWindow(QMainWindow):
         edit_menu.addSeparator()
         self._act_enable_all = edit_menu.addAction("&Enable All")
         self._act_disable_all = edit_menu.addAction("&Disable All")
+        edit_menu.addSeparator()
+        copy_menu = edit_menu.addMenu("Copy for &Docker")
+        self._act_copy_docker_mods = copy_menu.addAction("Copy Mod IDs")
+        self._act_copy_docker_workshop = copy_menu.addAction("Copy Workshop IDs")
         edit_menu.addSeparator()
         self._act_settings = edit_menu.addAction("Se&ttings...")
 
@@ -164,11 +177,14 @@ class MainWindow(QMainWindow):
         self._act_open.triggered.connect(self._on_open)
         self._act_save.triggered.connect(self._on_save)
         self._act_save_as.triggered.connect(self._on_save_as)
+        self._act_close.triggered.connect(self._on_close)
         self._act_exit.triggered.connect(self.close)
         self._act_add.triggered.connect(self._on_add_mod)
         self._act_remove.triggered.connect(self._on_remove_selected)
         self._act_enable_all.triggered.connect(self._on_enable_all)
         self._act_disable_all.triggered.connect(self._on_disable_all)
+        self._act_copy_docker_mods.triggered.connect(self._on_copy_docker_mods)
+        self._act_copy_docker_workshop.triggered.connect(self._on_copy_docker_workshop)
         self._act_settings.triggered.connect(self._on_settings)
         self._act_scan.triggered.connect(self._on_scan_workshop)
         self._act_refresh.triggered.connect(self._on_refresh_names)
@@ -288,6 +304,15 @@ class MainWindow(QMainWindow):
         if path:
             self._save_file(path)
 
+    def _on_close(self):
+        if not self._check_unsaved():
+            return
+        self._model.set_mods([])
+        self._current_file = None
+        self._dirty = False
+        self._settings.last_ini_path = ""
+        self._update_status()
+
     def _save_file(self, path: str):
         enabled = self._model.enabled_mods()
         mod_ids = [m.mod_id for m in enabled if m.mod_id]
@@ -387,6 +412,36 @@ class MainWindow(QMainWindow):
         self._model.set_mods(mods)
         self._dirty = True
         self._update_status()
+
+    # ── Docker Copy ─────────────────────────────────────────────
+
+    @staticmethod
+    def _escape_docker_mod_id(mod_id: str) -> str:
+        """Escape a mod ID for Docker env vars.
+
+        Double backslash prefix (``\\\\ModA``) so Docker produces ``\\ModA``
+        in the container.  Special characters like ``&`` are escaped with a
+        single backslash.
+        """
+        # Escape special chars that need a backslash in env strings
+        escaped = mod_id.replace("&", "\\&")
+        return f"\\\\{escaped}"
+
+    def _on_copy_docker_mods(self):
+        enabled = self._model.enabled_mods()
+        mod_ids = [self._escape_docker_mod_id(m.mod_id) for m in enabled if m.mod_id]
+        text = ";".join(mod_ids)
+        QApplication.clipboard().setText(text)
+        self.statusBar().showMessage(f"Copied {len(mod_ids)} mod IDs for Docker", 3000)
+
+    def _on_copy_docker_workshop(self):
+        enabled = self._model.enabled_mods()
+        workshop_ids = list(dict.fromkeys(
+            m.workshop_id for m in enabled if m.workshop_id
+        ))
+        text = ";".join(workshop_ids)
+        QApplication.clipboard().setText(text)
+        self.statusBar().showMessage(f"Copied {len(workshop_ids)} workshop IDs for Docker", 3000)
 
     # ── Workshop Scanner ───────────────────────────────────────
 
@@ -496,10 +551,11 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def _on_about(self):
+        version = QApplication.applicationVersion() or "dev"
         QMessageBox.about(
             self,
             "About PZ Mod Manager",
-            "PZ Mod Manager v0.1.0\n\n"
+            f"PZ Mod Manager v{version}\n\n"
             "A tool for managing Project Zomboid server mod IDs.\n\n"
             "Load a servertest.ini file to get started.",
         )

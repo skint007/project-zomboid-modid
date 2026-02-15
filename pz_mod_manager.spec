@@ -8,7 +8,9 @@ a = Analysis(
     [str(Path("src") / "pz_mod_manager" / "__main__.py")],
     pathex=[str(Path("src"))],
     binaries=[],
-    datas=[],
+    datas=[
+        (str(Path("src") / "pz_mod_manager" / "resources"), "pz_mod_manager/resources"),
+    ],
     hiddenimports=[
         "PySide6.QtCore",
         "PySide6.QtGui",
@@ -51,6 +53,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=sys.platform != "win32",
     disable_windowed_traceback=False,
+    icon=str(Path("src") / "pz_mod_manager" / "resources" / "icon.ico") if sys.platform == "win32" else None,
     codesign_identity=None,
     entitlements_file=None,
 )
