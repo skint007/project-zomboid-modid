@@ -26,6 +26,11 @@ from pz_mod_manager.models.mod_list_model import ModListModel
 from pz_mod_manager.services.ini_service import IniService
 from pz_mod_manager.services.settings_service import SettingsService
 from pz_mod_manager.services.steam_api_service import SteamApiError, SteamApiService
+from pz_mod_manager.services.workshop_scanner import (
+    scan_workshop_content,
+    build_mod_id_to_workshop_map,
+    build_workshop_to_mod_ids_map,
+)
 from pz_mod_manager.utils.constants import COLUMN_WORKSHOP_ID
 
 
@@ -151,6 +156,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self._act_add)
         toolbar.addAction(self._act_remove)
         toolbar.addSeparator()
+        self._act_scan = toolbar.addAction("Scan Workshop")
         self._act_refresh = toolbar.addAction("Refresh Names")
 
     def _setup_connections(self):
@@ -164,6 +170,7 @@ class MainWindow(QMainWindow):
         self._act_enable_all.triggered.connect(self._on_enable_all)
         self._act_disable_all.triggered.connect(self._on_disable_all)
         self._act_settings.triggered.connect(self._on_settings)
+        self._act_scan.triggered.connect(self._on_scan_workshop)
         self._act_refresh.triggered.connect(self._on_refresh_names)
         self._act_about.triggered.connect(self._on_about)
         self._table.customContextMenuRequested.connect(self._on_context_menu)
@@ -193,16 +200,57 @@ class MainWindow(QMainWindow):
         # Load disabled mods from sidecar
         disabled_mods = self._load_sidecar(path)
 
+        # Try to resolve correct pairings via workshop scanner
+        mod_to_ws = self._get_workshop_mapping()
+
         mods: list[Mod] = []
-        max_len = max(len(mod_ids), len(workshop_ids), 1) if mod_ids or workshop_ids else 0
-        for i in range(max_len):
-            mods.append(
-                Mod(
-                    mod_id=mod_ids[i] if i < len(mod_ids) else "",
-                    workshop_id=workshop_ids[i] if i < len(workshop_ids) else "",
-                    enabled=True,
-                )
+        if mod_to_ws:
+            # Scanner available - use it for correct pairings
+            ws_to_mods = build_workshop_to_mod_ids_map(
+                scan_workshop_content(Path(self._settings.workshop_path))
             )
+            for mid in mod_ids:
+                # Try exact match, then try with backslash escapes removed
+                # (PZ INI sometimes escapes & as \&)
+                wid = mod_to_ws.get(mid, "")
+                if not wid:
+                    clean_mid = mid.replace("\\", "")
+                    wid = mod_to_ws.get(clean_mid, "")
+                mods.append(Mod(mod_id=mid, workshop_id=wid, enabled=True))
+            # Add any workshop IDs not accounted for by the mods
+            # (e.g. library/dependency workshop items, or mods not in the Mods= list)
+            used_ws = {m.workshop_id for m in mods if m.workshop_id}
+            for wid in workshop_ids:
+                if wid and wid not in used_ws:
+                    # Look up what mod(s) this workshop item provides
+                    known_mods = ws_to_mods.get(wid, [])
+                    if known_mods:
+                        for km_id in known_mods:
+                            mods.append(Mod(mod_id=km_id, workshop_id=wid, enabled=True))
+                    else:
+                        mods.append(Mod(mod_id="", workshop_id=wid, enabled=True))
+        else:
+            # No scanner - fall back to positional pairing with warning
+            if mod_ids and workshop_ids and len(mod_ids) != len(workshop_ids):
+                QMessageBox.warning(
+                    self,
+                    "Mismatched Lists",
+                    f"The Mods= list has {len(mod_ids)} entries but "
+                    f"WorkshopItems= has {len(workshop_ids)} entries.\n\n"
+                    "In Project Zomboid, these are independent lists. "
+                    "The Workshop IDs shown may not correspond to the correct mods.\n\n"
+                    "Set your Workshop Path in Settings and click 'Scan Workshop' "
+                    "to auto-resolve the correct pairings.",
+                )
+            max_len = max(len(mod_ids), len(workshop_ids), 1) if mod_ids or workshop_ids else 0
+            for i in range(max_len):
+                mods.append(
+                    Mod(
+                        mod_id=mod_ids[i] if i < len(mod_ids) else "",
+                        workshop_id=workshop_ids[i] if i < len(workshop_ids) else "",
+                        enabled=True,
+                    )
+                )
 
         # Re-add disabled mods
         for dm in disabled_mods:
@@ -242,8 +290,12 @@ class MainWindow(QMainWindow):
 
     def _save_file(self, path: str):
         enabled = self._model.enabled_mods()
-        mod_ids = [m.mod_id for m in enabled]
-        workshop_ids = [m.workshop_id for m in enabled]
+        mod_ids = [m.mod_id for m in enabled if m.mod_id]
+        # Workshop IDs are an independent list - deduplicate and filter empties
+        # (a single workshop item can provide multiple mods)
+        workshop_ids = list(dict.fromkeys(
+            m.workshop_id for m in enabled if m.workshop_id
+        ))
 
         try:
             # If file doesn't exist yet (Save As to new location), create minimal content
@@ -335,6 +387,64 @@ class MainWindow(QMainWindow):
         self._model.set_mods(mods)
         self._dirty = True
         self._update_status()
+
+    # ── Workshop Scanner ───────────────────────────────────────
+
+    def _get_workshop_mapping(self) -> dict[str, str]:
+        """Return mod_id -> workshop_id mapping from scanner, or empty dict."""
+        ws_path = self._settings.workshop_path
+        if not ws_path:
+            return {}
+        results = scan_workshop_content(Path(ws_path))
+        if not results:
+            return {}
+        return build_mod_id_to_workshop_map(results)
+
+    def _on_scan_workshop(self):
+        ws_path = self._settings.workshop_path
+        if not ws_path:
+            QMessageBox.information(
+                self,
+                "Workshop Path Required",
+                "Set your Workshop Path in Edit > Settings first.\n\n"
+                "This should point to the Steam workshop directory where "
+                "PZ mod files are downloaded (e.g. /path/to/workshop-mods/).",
+            )
+            return
+
+        results = scan_workshop_content(Path(ws_path))
+        if not results:
+            QMessageBox.warning(
+                self,
+                "No Mods Found",
+                f"No mod.info files found under:\n{ws_path}\n\n"
+                "Make sure the path points to the Steam workshop directory.",
+            )
+            return
+
+        mod_to_ws = build_mod_id_to_workshop_map(results)
+        ws_to_mods = build_workshop_to_mod_ids_map(results)
+
+        # Update workshop IDs and names for existing mods in the model
+        mods = self._model.mods
+        updated = 0
+        for mod in mods:
+            if mod.mod_id and mod.mod_id in mod_to_ws:
+                info = next(r for r in results if r.mod_id == mod.mod_id)
+                if mod.workshop_id != info.workshop_id or not mod.name:
+                    mod.workshop_id = info.workshop_id
+                    if info.name:
+                        mod.name = info.name
+                    updated += 1
+
+        self._model.set_mods(mods)
+        self._dirty = True
+        self._update_status()
+
+        self.statusBar().showMessage(
+            f"Scanned {len(results)} mods from workshop, updated {updated} pairings",
+            5000,
+        )
 
     # ── Steam API ─────────────────────────────────────────────
 

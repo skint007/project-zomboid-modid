@@ -30,6 +30,14 @@ class SettingsService:
         val = self._settings.value("recent_files", [], type=list)
         return val if isinstance(val, list) else []
 
+    @property
+    def workshop_path(self) -> str:
+        return self._settings.value("workshop_path", "", type=str)
+
+    @workshop_path.setter
+    def workshop_path(self, value: str) -> None:
+        self._settings.setValue("workshop_path", value)
+
     def add_recent_file(self, path: str, max_items: int = 10) -> None:
         files = self.recent_files
         if path in files:

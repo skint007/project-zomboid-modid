@@ -52,6 +52,22 @@ class TestLoad:
         assert mod_ids == []
         assert workshop_ids == []
 
+    def test_mismatched_lengths(self, service, tmp_path):
+        """PZ allows different-length Mods= and WorkshopItems= lists."""
+        ini = tmp_path / "mismatch.ini"
+        ini.write_text("Mods=modA;modB;modC\nWorkshopItems=111;222\n")
+        mod_ids, workshop_ids = service.load(ini)
+        assert mod_ids == ["modA", "modB", "modC"]
+        assert workshop_ids == ["111", "222"]
+
+    def test_only_semicolons(self, service, tmp_path):
+        """A line with only semicolons should parse as empty."""
+        ini = tmp_path / "semis.ini"
+        ini.write_text("Mods=;;;\nWorkshopItems=\n")
+        mod_ids, workshop_ids = service.load(ini)
+        assert mod_ids == []
+        assert workshop_ids == []
+
 
 class TestSave:
     def test_preserves_other_lines(self, service, sample_ini):

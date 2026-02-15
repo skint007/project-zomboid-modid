@@ -51,8 +51,11 @@ class ModListModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.CheckStateRole and col == COLUMN_ENABLED:
             return Qt.CheckState.Checked if mod.enabled else Qt.CheckState.Unchecked
 
-        if role == Qt.ItemDataRole.EditRole and col == COLUMN_MOD_ID:
-            return mod.mod_id
+        if role == Qt.ItemDataRole.EditRole:
+            if col == COLUMN_MOD_ID:
+                return mod.mod_id
+            if col == COLUMN_WORKSHOP_ID:
+                return mod.workshop_id
 
         return None
 
@@ -68,10 +71,15 @@ class ModListModel(QAbstractTableModel):
             self.dataChanged.emit(index, index, [role])
             return True
 
-        if role == Qt.ItemDataRole.EditRole and col == COLUMN_MOD_ID:
-            mod.mod_id = str(value)
-            self.dataChanged.emit(index, index, [role])
-            return True
+        if role == Qt.ItemDataRole.EditRole:
+            if col == COLUMN_MOD_ID:
+                mod.mod_id = str(value)
+                self.dataChanged.emit(index, index, [role])
+                return True
+            if col == COLUMN_WORKSHOP_ID:
+                mod.workshop_id = str(value)
+                self.dataChanged.emit(index, index, [role])
+                return True
 
         return False
 
@@ -83,7 +91,7 @@ class ModListModel(QAbstractTableModel):
         col = index.column()
         if col == COLUMN_ENABLED:
             return base | Qt.ItemFlag.ItemIsUserCheckable
-        if col == COLUMN_MOD_ID:
+        if col in (COLUMN_MOD_ID, COLUMN_WORKSHOP_ID):
             return base | Qt.ItemFlag.ItemIsEditable
         return base
 

@@ -85,6 +85,17 @@ class IniService:
             return f.readlines()
 
     def _parse_semicolon_list(self, line: str) -> list[str]:
-        """Split 'Key=val1;val2;val3' into ['val1', 'val2', 'val3'], filtering empties."""
+        """Split 'Key=val1;val2;val3' into ['val1', 'val2', 'val3'].
+
+        Preserves empty entries in the middle to maintain positional
+        correspondence between Mods= and WorkshopItems= lists.
+        Only strips trailing empty entries (caused by trailing semicolons).
+        """
         _, _, value = line.partition("=")
-        return [item for item in value.split(";") if item]
+        if not value or not value.strip(";"):
+            return []
+        items = value.split(";")
+        # Strip trailing empties (from trailing semicolons) but keep internal ones
+        while items and not items[-1]:
+            items.pop()
+        return items
