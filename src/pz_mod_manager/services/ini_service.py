@@ -92,6 +92,47 @@ class IniService:
                 pass
             raise
 
+    def read_bool(self, file_path: str | Path, key: str, default: bool = False) -> bool:
+        """Read a boolean key=value from the INI file."""
+        for line in self._read_lines(file_path):
+            stripped = line.strip()
+            if stripped.startswith(f"{key}="):
+                _, _, value = stripped.partition("=")
+                return value.strip().lower() == "true"
+        return default
+
+    def write_bool(self, file_path: str | Path, key: str, value: bool) -> None:
+        """Write a boolean key=value in the INI file, preserving all other content."""
+        file_path = Path(file_path)
+        lines = self._read_lines(file_path)
+        new_value = "true" if value else "false"
+        found = False
+        new_lines: list[str] = []
+
+        for line in lines:
+            if line.strip().startswith(f"{key}="):
+                new_lines.append(f"{key}={new_value}\n")
+                found = True
+            else:
+                new_lines.append(line)
+
+        if not found:
+            new_lines.append(f"{key}={new_value}\n")
+
+        fd, tmp_path = tempfile.mkstemp(
+            dir=file_path.parent, suffix=".tmp", prefix=".pz_"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+            os.replace(tmp_path, file_path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+
     def _read_lines(self, file_path: str | Path) -> list[str]:
         with open(file_path, encoding="utf-8") as f:
             return f.readlines()

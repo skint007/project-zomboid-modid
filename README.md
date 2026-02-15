@@ -16,6 +16,8 @@ A desktop application for managing Project Zomboid server mod lists. Instead of 
 - **Drag & reorder** mods (load order matters in PZ)
 - **Add mods** by pasting a Steam Workshop URL or ID
 
+![Mod Manager screenshot](screenshot.png)
+
 ## Installation
 
 ### Arch Linux (AUR)

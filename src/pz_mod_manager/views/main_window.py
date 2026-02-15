@@ -153,6 +153,10 @@ class MainWindow(QMainWindow):
         self._act_copy_docker_mods = copy_menu.addAction("Copy Mod IDs")
         self._act_copy_docker_workshop = copy_menu.addAction("Copy Workshop IDs")
         edit_menu.addSeparator()
+        self._act_lua_checksum = edit_menu.addAction("Do &Lua Checksum")
+        self._act_lua_checksum.setCheckable(True)
+        self._act_lua_checksum.setEnabled(False)
+        edit_menu.addSeparator()
         self._act_settings = edit_menu.addAction("Se&ttings...")
 
         # Help menu
@@ -185,6 +189,7 @@ class MainWindow(QMainWindow):
         self._act_disable_all.triggered.connect(self._on_disable_all)
         self._act_copy_docker_mods.triggered.connect(self._on_copy_docker_mods)
         self._act_copy_docker_workshop.triggered.connect(self._on_copy_docker_workshop)
+        self._act_lua_checksum.triggered.connect(self._on_toggle_lua_checksum)
         self._act_settings.triggered.connect(self._on_settings)
         self._act_scan.triggered.connect(self._on_scan_workshop)
         self._act_refresh.triggered.connect(self._on_refresh_names)
@@ -284,6 +289,10 @@ class MainWindow(QMainWindow):
         self._dirty = False
         self._settings.last_ini_path = path
         self._settings.add_recent_file(path)
+        self._act_lua_checksum.setEnabled(True)
+        self._act_lua_checksum.setChecked(
+            self._ini_service.read_bool(path, "DoLuaChecksum")
+        )
         self._update_status()
 
         # Auto-fetch names if API key is set
@@ -311,6 +320,8 @@ class MainWindow(QMainWindow):
         self._current_file = None
         self._dirty = False
         self._settings.last_ini_path = ""
+        self._act_lua_checksum.setChecked(False)
+        self._act_lua_checksum.setEnabled(False)
         self._update_status()
 
     def _save_file(self, path: str):
@@ -541,6 +552,20 @@ class MainWindow(QMainWindow):
 
     def _on_names_error(self, msg: str):
         self.statusBar().showMessage(f"Failed to fetch names: {msg}", 5000)
+
+    # ── INI Options ────────────────────────────────────────────
+
+    def _on_toggle_lua_checksum(self, checked: bool):
+        if not self._current_file:
+            return
+        try:
+            self._ini_service.write_bool(self._current_file, "DoLuaChecksum", checked)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to update INI:\n{e}")
+            self._act_lua_checksum.setChecked(not checked)
+            return
+        state = "enabled" if checked else "disabled"
+        self.statusBar().showMessage(f"DoLuaChecksum {state}", 3000)
 
     # ── Settings / About ──────────────────────────────────────
 
