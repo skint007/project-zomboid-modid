@@ -9,12 +9,15 @@ A desktop application for managing Project Zomboid server mod lists. Instead of 
 ## Features
 
 - **Load/save** Project Zomboid `servertest.ini` files (B42+ format supported)
+- **Auto-open** last INI on launch, with Close INI to unload
 - **Steam Workshop integration** — fetch mod names from the Steam API
 - **Workshop scanner** — scan local workshop content to auto-resolve Mod ID / Workshop ID pairings
 - **Enable/disable** individual mods with checkboxes (disabled mods persist in a sidecar JSON file)
 - **Search/filter** across all columns
 - **Drag & reorder** mods (load order matters in PZ)
 - **Add mods** by pasting a Steam Workshop URL or ID
+- **Server Settings editor** — edit all INI settings with a searchable card-based UI (booleans as checkboxes, numbers as spinboxes, etc.)
+- **Copy for Docker** — copy mod IDs or workshop IDs with proper escaping for Docker env vars
 
 ![Mod Manager screenshot](screenshot.png)
 
@@ -52,9 +55,10 @@ pz-mod-manager
 ## Usage
 
 1. **File > Open** — select your server's `.ini` file (e.g. `servertest.ini`)
-2. **Edit > Settings** — set your Steam Workshop content path and API key ([get one here](https://steamcommunity.com/dev/apikey))
+2. **Edit > App Settings** — set your Steam Workshop content path and API key ([get one here](https://steamcommunity.com/dev/apikey))
 3. Add/remove/reorder mods, toggle checkboxes to enable/disable
-4. **File > Save** — writes changes back to the INI
+4. **Edit > Server Settings** — edit all server INI options in a searchable dialog
+5. **File > Save** — writes changes back to the INI
 
 ## Building from source
 

@@ -8,7 +8,8 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
-    QFormLayout,
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QScrollArea,
@@ -28,6 +29,7 @@ class ServerSettingsDialog(QDialog):
         self._file_path = file_path
         self._widgets: dict[str, QWidget] = {}
         self._original: dict[str, str] = {}
+        self._cards: list[tuple[QFrame, str]] = []  # (card, searchable_text)
         self._qsettings = QSettings(APP_NAME, APP_NAME)
 
         self.setWindowTitle("Server Settings")
@@ -40,49 +42,96 @@ class ServerSettingsDialog(QDialog):
     def _setup_ui(self, settings: list[IniSetting]):
         layout = QVBoxLayout(self)
 
-        # Scrollable area for all the settings
+        # Search bar
+        self._search_edit = QLineEdit()
+        self._search_edit.setPlaceholderText("Filter settings...")
+        self._search_edit.setClearButtonEnabled(True)
+        self._search_edit.textChanged.connect(self._on_filter)
+        layout.addWidget(self._search_edit)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         container = QWidget()
-        form = QFormLayout(container)
-        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        cards_layout = QVBoxLayout(container)
+        cards_layout.setSpacing(8)
+        cards_layout.setContentsMargins(4, 4, 4, 4)
 
         for setting in settings:
             self._original[setting.key] = setting.value
             widget = self._create_widget(setting)
             self._widgets[setting.key] = widget
 
-            label_text = self._key_to_label(setting.key)
-
-            # Build a label with bold header and normal-weight description
             desc = ""
             if setting.comment:
                 desc = re.sub(
                     r"\s*(?:Min|Max|Default):\s*\S+", "", setting.comment
                 ).strip().rstrip(".")
 
-            if desc:
-                rich = f"<b>{label_text}</b><br>{desc}"
-            else:
-                rich = f"<b>{label_text}</b>"
+            card = self._build_card(setting, widget, desc)
+            cards_layout.addWidget(card)
 
-            label = QLabel(rich)
-            label.setTextFormat(Qt.TextFormat.RichText)
-            label.setWordWrap(True)
-            label.setMinimumWidth(350)
-            form.addRow(label, widget)
+            # Build searchable text: key, readable label, and description
+            search_text = f"{setting.key} {self._key_to_label(setting.key)} {desc}".lower()
+            self._cards.append((card, search_text))
 
+        cards_layout.addStretch()
         scroll.setWidget(container)
         layout.addWidget(scroll)
 
-        # Buttons
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def _build_card(self, setting: IniSetting, widget: QWidget, desc: str) -> QFrame:
+        card = QFrame()
+        card.setFrameShape(QFrame.Shape.StyledPanel)
+        card.setObjectName("settingCard")
+        card.setStyleSheet(
+            "QFrame#settingCard { background: palette(base); "
+            "border: 1px solid palette(mid); border-radius: 6px; }\n"
+            "QLineEdit, QSpinBox, QDoubleSpinBox { "
+            "border: 1px solid palette(mid); border-radius: 3px; "
+            "padding: 2px 4px; }"
+        )
+
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(12, 8, 12, 8)
+        card_layout.setSpacing(4)
+
+        # Header row
+        title = QLabel(f"<b>{self._key_to_label(setting.key)}</b>")
+        title.setTextFormat(Qt.TextFormat.RichText)
+
+        if isinstance(widget, QLineEdit):
+            card_layout.addWidget(title)
+            card_layout.addWidget(widget)
+        else:
+            header_row = QHBoxLayout()
+            header_row.setSpacing(12)
+            header_row.addWidget(title, 1)
+            header_row.addWidget(widget, 0)
+            card_layout.addLayout(header_row)
+
+        # Description
+        if desc:
+            desc_label = QLabel(desc)
+            desc_label.setWordWrap(True)
+            desc_label.setEnabled(False)
+            desc_label.setStyleSheet(
+                "QLabel { border: none; font-size: 12px; }"
+            )
+            card_layout.addWidget(desc_label)
+
+        return card
+
+    def _on_filter(self, text: str):
+        needle = text.lower().strip()
+        for card, search_text in self._cards:
+            card.setVisible(not needle or needle in search_text)
 
     def _create_widget(self, setting: IniSetting) -> QWidget:
         vtype = setting.value_type
@@ -107,7 +156,6 @@ class ServerSettingsDialog(QDialog):
             spin.setValue(float(setting.value))
             return spin
 
-        # Default: text field
         edit = QLineEdit(setting.value)
         return edit
 
