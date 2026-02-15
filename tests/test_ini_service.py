@@ -68,6 +68,21 @@ class TestLoad:
         assert mod_ids == []
         assert workshop_ids == []
 
+    def test_b42_backslash_prefix(self, service, tmp_path):
+        """B42+ format prefixes each mod ID with a backslash."""
+        ini = tmp_path / "b42.ini"
+        ini.write_text("Mods=\\ModA;\\ModB;\\ModC\nWorkshopItems=111;222;333\n")
+        mod_ids, workshop_ids = service.load(ini)
+        assert mod_ids == ["ModA", "ModB", "ModC"]
+        assert workshop_ids == ["111", "222", "333"]
+
+    def test_mixed_old_and_new_format(self, service, tmp_path):
+        """Handle mix of prefixed and non-prefixed mod IDs."""
+        ini = tmp_path / "mixed.ini"
+        ini.write_text("Mods=\\ModA;ModB;\\ModC\nWorkshopItems=111;222;333\n")
+        mod_ids, _ = service.load(ini)
+        assert mod_ids == ["ModA", "ModB", "ModC"]
+
 
 class TestSave:
     def test_preserves_other_lines(self, service, sample_ini):
@@ -77,7 +92,14 @@ class TestSave:
         assert "MaxPlayers=32" in content
         assert "SteamScoreboard=true" in content
 
-    def test_writes_updated_mods(self, service, sample_ini):
+    def test_writes_b42_format(self, service, sample_ini):
+        """Save writes mod IDs with B42+ backslash prefix."""
+        service.save(sample_ini, ["ModA", "ModB"], ["111", "222"])
+        content = sample_ini.read_text()
+        assert "Mods=\\ModA;\\ModB" in content
+
+    def test_roundtrip(self, service, sample_ini):
+        """Save then load returns the same mod IDs (without backslash prefix)."""
         service.save(sample_ini, ["ModA", "ModB"], ["111", "222"])
         mod_ids, workshop_ids = service.load(sample_ini)
         assert mod_ids == ["ModA", "ModB"]
@@ -94,7 +116,7 @@ class TestSave:
         ini.write_text("SomeOtherSetting=value\n")
         service.save(ini, ["TestMod"], ["123"])
         content = ini.read_text()
-        assert "Mods=TestMod" in content
+        assert "Mods=\\TestMod" in content
         assert "WorkshopItems=123" in content
         assert "SomeOtherSetting=value" in content
 

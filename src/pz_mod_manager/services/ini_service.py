@@ -10,6 +10,10 @@ class IniService:
 
     The PZ servertest.ini is a flat key=value file with no section headers.
     We preserve all lines exactly as-is except for the Mods= and WorkshopItems= lines.
+
+    In B42+, mod IDs in the Mods= line are prefixed with a backslash:
+        Mods=\\ModA;\\ModB;\\ModC
+    We strip the prefix on load and add it back on save.
     """
 
     def load(self, file_path: str | Path) -> tuple[list[str], list[str]]:
@@ -17,6 +21,7 @@ class IniService:
 
         Returns:
             (mod_ids, workshop_ids) - two lists of strings.
+            Mod IDs have the B42+ backslash prefix stripped.
         """
         lines = self._read_lines(file_path)
         mod_ids: list[str] = []
@@ -25,7 +30,9 @@ class IniService:
         for line in lines:
             stripped = line.strip()
             if stripped.startswith("Mods="):
-                mod_ids = self._parse_semicolon_list(stripped)
+                raw = self._parse_semicolon_list(stripped)
+                # Strip B42+ backslash prefix from each mod ID
+                mod_ids = [mid.lstrip("\\") for mid in raw]
             elif stripped.startswith("WorkshopItems="):
                 workshop_ids = self._parse_semicolon_list(stripped)
 
@@ -37,11 +44,16 @@ class IniService:
         mod_ids: list[str],
         workshop_ids: list[str],
     ) -> None:
-        """Write updated Mods= and WorkshopItems= lines, preserving all other content."""
+        """Write updated Mods= and WorkshopItems= lines, preserving all other content.
+
+        Mod IDs are written with the B42+ backslash prefix.
+        """
         file_path = Path(file_path)
         lines = self._read_lines(file_path)
 
-        mods_line = "Mods=" + ";".join(mod_ids) + "\n"
+        # B42+ format: each mod ID gets a backslash prefix
+        formatted_mods = [f"\\{mid}" for mid in mod_ids if mid]
+        mods_line = "Mods=" + ";".join(formatted_mods) + "\n"
         workshop_line = "WorkshopItems=" + ";".join(workshop_ids) + "\n"
 
         found_mods = False
@@ -92,7 +104,7 @@ class IniService:
         Only strips trailing empty entries (caused by trailing semicolons).
         """
         _, _, value = line.partition("=")
-        if not value or not value.strip(";"):
+        if not value or not value.strip(";\\ "):
             return []
         items = value.split(";")
         # Strip trailing empties (from trailing semicolons) but keep internal ones

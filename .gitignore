@@ -15,3 +15,8 @@ env/
 .pytest_cache/
 .mypy_cache/
 .pz_mod_manager.json
+
+# Nuitka build artifacts
+*.build/
+*.dist/
+*.onefile-build/

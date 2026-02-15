@@ -14,6 +14,10 @@ dev = [
     "pytest-qt>=4.2",
     "pytest-mock>=3.12",
 ]
+build = [
+    "pyinstaller>=6.0",
+    "nuitka>=2.0",
+]
 
 [project.scripts]
 pz-mod-manager = "pz_mod_manager.app:main"

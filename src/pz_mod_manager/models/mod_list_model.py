@@ -67,7 +67,7 @@ class ModListModel(QAbstractTableModel):
         col = index.column()
 
         if role == Qt.ItemDataRole.CheckStateRole and col == COLUMN_ENABLED:
-            mod.enabled = value == Qt.CheckState.Checked
+            mod.enabled = (value.value if hasattr(value, "value") else value) == Qt.CheckState.Checked.value
             self.dataChanged.emit(index, index, [role])
             return True
 

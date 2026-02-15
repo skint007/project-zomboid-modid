@@ -1,0 +1,99 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            pyinstaller_name: pz-mod-manager
+            nuitka_name: pz-mod-manager
+          - os: windows-latest
+            platform: windows
+            pyinstaller_name: pz-mod-manager.exe
+            nuitka_name: PZ-Mod-Manager.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e ".[build]"
+
+      - name: Run tests
+        run: |
+          pip install -e ".[dev]"
+          pytest tests/ -v
+
+      # ── PyInstaller ──
+      - name: Build with PyInstaller
+        run: pyinstaller pz_mod_manager.spec --noconfirm
+
+      - name: Upload PyInstaller artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pz-mod-manager-pyinstaller-${{ matrix.platform }}
+          path: dist/${{ matrix.pyinstaller_name }}
+
+      # ── Nuitka ──
+      - name: Install Nuitka extras (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y patchelf ccache
+
+      - name: Build with Nuitka (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/build_nuitka.sh
+
+      - name: Build with Nuitka (Windows)
+        if: runner.os == 'Windows'
+        run: scripts\build_nuitka.bat
+
+      - name: Upload Nuitka artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pz-mod-manager-nuitka-${{ matrix.platform }}
+          path: dist/${{ matrix.nuitka_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir release
+          # PyInstaller
+          cp artifacts/pz-mod-manager-pyinstaller-linux/pz-mod-manager release/pz-mod-manager-pyinstaller-linux
+          cp artifacts/pz-mod-manager-pyinstaller-windows/pz-mod-manager.exe release/pz-mod-manager-pyinstaller-windows.exe
+          # Nuitka
+          cp artifacts/pz-mod-manager-nuitka-linux/pz-mod-manager release/pz-mod-manager-nuitka-linux
+          cp artifacts/pz-mod-manager-nuitka-windows/PZ-Mod-Manager.exe release/pz-mod-manager-nuitka-windows.exe
+          chmod +x release/pz-mod-manager-*-linux
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release/*
