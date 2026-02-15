@@ -20,3 +20,4 @@ env/
 *.build/
 *.dist/
 *.onefile-build/
+BUILD.md

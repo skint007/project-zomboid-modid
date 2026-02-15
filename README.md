@@ -18,6 +18,20 @@ A desktop application for managing Project Zomboid server mod lists. Instead of 
 
 ## Installation
 
+### Arch Linux (AUR)
+
+```bash
+yay -S pz-mod-manager
+```
+
+Or manually:
+
+```bash
+git clone https://aur.archlinux.org/pz-mod-manager.git
+cd pz-mod-manager
+makepkg -si
+```
+
 ### Pre-built binaries
 
 Download the latest release from the [Releases](../../releases) page. Available for Windows and Linux — no Python installation required.
@@ -25,7 +39,7 @@ Download the latest release from the [Releases](../../releases) page. Available 
 ### From source
 
 ```bash
-git clone https://github.com/your-username/project-zomboid-modid.git
+git clone https://github.com/skint007/project-zomboid-modid.git
 cd project-zomboid-modid
 python -m venv .venv
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
