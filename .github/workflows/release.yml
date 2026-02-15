@@ -9,18 +9,16 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-pyinstaller:
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
             platform: linux
-            pyinstaller_name: pz-mod-manager
-            nuitka_name: pz-mod-manager
+            artifact_name: pz-mod-manager
           - os: windows-latest
             platform: windows
-            pyinstaller_name: pz-mod-manager.exe
-            nuitka_name: PZ-Mod-Manager.exe
+            artifact_name: pz-mod-manager.exe
 
     runs-on: ${{ matrix.os }}
 
@@ -39,31 +37,50 @@ jobs:
           sudo apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0
 
       - name: Install dependencies
-        run: pip install -e ".[build]"
+        run: pip install -e ".[build,dev]"
 
       - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: |
-          pip install -e ".[dev]"
-          pytest tests/ -v
+        run: pytest tests/ -v
 
-      # ── PyInstaller ──
       - name: Build with PyInstaller
         run: pyinstaller pz_mod_manager.spec --noconfirm
 
-      - name: Upload PyInstaller artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: pz-mod-manager-pyinstaller-${{ matrix.platform }}
-          path: dist/${{ matrix.pyinstaller_name }}
+          path: dist/${{ matrix.artifact_name }}
 
-      # ── Nuitka ──
-      - name: Install Nuitka extras (Linux)
+  build-nuitka:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: windows
+
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y patchelf ccache
+          sudo apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0 patchelf ccache
+
+      - name: Install dependencies
+        run: pip install -e ".[build]"
 
       - name: Build with Nuitka (Linux)
         if: runner.os == 'Linux'
@@ -73,14 +90,20 @@ jobs:
         if: runner.os == 'Windows'
         run: scripts\build_nuitka.bat
 
-      - name: Upload Nuitka artifact
+      - name: List dist contents
+        run: ls -la dist/
+        shell: bash
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: pz-mod-manager-nuitka-${{ matrix.platform }}
-          path: dist/${{ matrix.nuitka_name }}
+          path: dist/
+          if-no-files-found: warn
 
   release:
-    needs: build
+    needs: [build-pyinstaller, build-nuitka]
+    if: always() && needs.build-pyinstaller.result == 'success'
     runs-on: ubuntu-latest
 
     steps:
@@ -89,16 +112,28 @@ jobs:
         with:
           path: artifacts
 
+      - name: List downloaded artifacts
+        run: find artifacts -type f | sort
+
       - name: Prepare release assets
         run: |
           mkdir release
-          # PyInstaller
+
+          # PyInstaller (required)
           cp artifacts/pz-mod-manager-pyinstaller-linux/pz-mod-manager release/pz-mod-manager-pyinstaller-linux
           cp artifacts/pz-mod-manager-pyinstaller-windows/pz-mod-manager.exe release/pz-mod-manager-pyinstaller-windows.exe
-          # Nuitka
-          cp artifacts/pz-mod-manager-nuitka-linux/pz-mod-manager release/pz-mod-manager-nuitka-linux
-          cp artifacts/pz-mod-manager-nuitka-windows/PZ-Mod-Manager.exe release/pz-mod-manager-nuitka-windows.exe
-          chmod +x release/pz-mod-manager-*-linux
+
+          # Nuitka (optional - copy whatever exists)
+          for f in artifacts/pz-mod-manager-nuitka-linux/*; do
+            [ -f "$f" ] && cp "$f" release/pz-mod-manager-nuitka-linux && break
+          done
+          for f in artifacts/pz-mod-manager-nuitka-windows/*; do
+            [ -f "$f" ] && cp "$f" release/pz-mod-manager-nuitka-windows.exe && break
+          done
+
+          chmod +x release/pz-mod-manager-*-linux 2>/dev/null || true
+          echo "Release assets:"
+          ls -la release/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
