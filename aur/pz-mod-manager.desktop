@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PZ Mod Manager
+Comment=Manage Project Zomboid server mod lists
+Exec=pz-mod-manager
+Icon=pz-mod-manager
+Terminal=false
+Categories=Game;Utility;
+Keywords=zomboid;mods;steam;workshop;
