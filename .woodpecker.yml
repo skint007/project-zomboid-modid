@@ -5,14 +5,14 @@ steps:
   - name: test
     image: python:3.12
     commands:
-      - apt-get update && apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0
+      - apt-get update && apt-get install -y libegl1 libgl1 libxkbcommon0 libxcb-cursor0
       - pip install -e ".[build,dev]"
       - QT_QPA_PLATFORM=offscreen pytest tests/ -v
 
   - name: build-linux-pyinstaller
     image: python:3.12
     commands:
-      - apt-get update && apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0
+      - apt-get update && apt-get install -y libegl1 libgl1 libxkbcommon0 libxcb-cursor0
       - pip install -e ".[build]"
       - pyinstaller pz_mod_manager.spec --noconfirm
       - mkdir -p release
@@ -32,7 +32,7 @@ steps:
     image: python:3.12
     failure: ignore
     commands:
-      - apt-get update && apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0 patchelf ccache
+      - apt-get update && apt-get install -y libegl1 libgl1 libxkbcommon0 libxcb-cursor0 patchelf ccache
       - pip install -e ".[build]"
       - bash scripts/build_nuitka.sh
       - mkdir -p release
