@@ -1,0 +1,76 @@
+when:
+  event: tag
+
+steps:
+  - name: test
+    image: python:3.12
+    commands:
+      - apt-get update && apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0
+      - pip install -e ".[build,dev]"
+      - QT_QPA_PLATFORM=offscreen pytest tests/ -v
+
+  - name: build-linux-pyinstaller
+    image: python:3.12
+    commands:
+      - apt-get update && apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0
+      - pip install -e ".[build]"
+      - pyinstaller pz_mod_manager.spec --noconfirm
+      - mkdir -p release
+      - cp dist/pz-mod-manager release/pz-mod-manager-pyinstaller-linux
+      - chmod +x release/pz-mod-manager-pyinstaller-linux
+
+  - name: build-windows-pyinstaller
+    image: cdrx/pyinstaller-windows:python3
+    failure: ignore
+    commands:
+      - pip install -e ".[build]"
+      - pyinstaller pz_mod_manager.spec --noconfirm
+      - mkdir -p release
+      - cp dist/pz-mod-manager.exe release/pz-mod-manager-pyinstaller-windows.exe
+
+  - name: build-linux-nuitka
+    image: python:3.12
+    failure: ignore
+    commands:
+      - apt-get update && apt-get install -y libegl1 libxkbcommon0 libxcb-cursor0 patchelf ccache
+      - pip install -e ".[build]"
+      - bash scripts/build_nuitka.sh
+      - mkdir -p release
+      - cp dist/pz-mod-manager release/pz-mod-manager-nuitka-linux
+      - chmod +x release/pz-mod-manager-nuitka-linux
+
+  - name: release
+    image: woodpeckerci/plugin-github-release
+    settings:
+      api_key:
+        from_secret: github_token
+      files:
+        - release/*
+      title: ${CI_COMMIT_TAG}
+
+  - name: publish-aur
+    image: archlinux:latest
+    environment:
+      AUR_SSH_PRIVATE_KEY:
+        from_secret: aur_ssh_private_key
+    commands:
+      - pacman -Sy --noconfirm openssh git
+      - |
+        VERSION=$${CI_COMMIT_TAG#v}
+        mkdir -p ~/.ssh
+        echo "$${AUR_SSH_PRIVATE_KEY}" > ~/.ssh/aur
+        chmod 600 ~/.ssh/aur
+        ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+        export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur"
+        git clone ssh://aur@aur.archlinux.org/pz-mod-manager.git /tmp/aur
+        cd /tmp/aur
+        sed -i "s/^pkgver=.*/pkgver=$${VERSION}/" PKGBUILD
+        pacman -S --noconfirm pacman-contrib
+        updpkgsums
+        makepkg --printsrcinfo > .SRCINFO
+        git config user.name "skint007"
+        git config user.email "skint007@users.noreply.github.com"
+        git add PKGBUILD .SRCINFO
+        git commit -m "Update to $${VERSION}"
+        git push
+
