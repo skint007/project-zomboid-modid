@@ -42,7 +42,7 @@ class AddModDialog(QDialog):
 
         if not self._api_service:
             hint = QLabel("Set your Steam API key in Settings to enable fetching.")
-            hint.setStyleSheet("color: gray; font-style: italic;")
+            hint.setObjectName("hintLabelItalic")
             form.addRow("", hint)
 
         form.addRow("", QLabel(""))  # spacer
@@ -66,7 +66,7 @@ class AddModDialog(QDialog):
             "It is often (but not always) the same as the mod's display name."
         )
         hint_label.setWordWrap(True)
-        hint_label.setStyleSheet("color: gray; font-size: 11px;")
+        hint_label.setObjectName("hintLabel")
         form.addRow("", hint_label)
 
         layout.addLayout(form)

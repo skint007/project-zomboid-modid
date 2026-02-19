@@ -46,7 +46,7 @@ class SettingsDialog(QDialog):
             "Used to resolve correct Mod ID <-> Workshop ID pairings."
         )
         ws_hint.setWordWrap(True)
-        ws_hint.setStyleSheet("color: gray; font-size: 11px;")
+        ws_hint.setObjectName("hintLabel")
         form.addRow("", ws_hint)
 
         # Steam API Key

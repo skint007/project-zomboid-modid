@@ -90,14 +90,6 @@ class ServerSettingsDialog(QDialog):
         card = QFrame()
         card.setFrameShape(QFrame.Shape.StyledPanel)
         card.setObjectName("settingCard")
-        card.setStyleSheet(
-            "QFrame#settingCard { background: palette(base); "
-            "border: 1px solid palette(mid); border-radius: 6px; }\n"
-            "QLineEdit, QSpinBox, QDoubleSpinBox { "
-            "border: 1px solid palette(mid); border-radius: 3px; "
-            "padding: 2px 4px; }"
-        )
-
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(12, 8, 12, 8)
         card_layout.setSpacing(4)
@@ -121,9 +113,6 @@ class ServerSettingsDialog(QDialog):
             desc_label = QLabel(desc)
             desc_label.setWordWrap(True)
             desc_label.setEnabled(False)
-            desc_label.setStyleSheet(
-                "QLabel { border: none; font-size: 12px; }"
-            )
             card_layout.addWidget(desc_label)
 
         return card
