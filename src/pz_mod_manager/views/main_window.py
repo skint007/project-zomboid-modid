@@ -538,11 +538,14 @@ class MainWindow(QMainWindow):
         self._worker_thread.start()
 
     def _on_names_fetched(self, results: list[dict]):
+        was_dirty = self._dirty
         for item in results:
             wid = item.get("publishedfileid", "")
             title = item.get("title", "")
             if wid and title:
                 self._model.update_mod_name(wid, title)
+        self._dirty = was_dirty
+        self._update_status()
         self.statusBar().showMessage(f"Updated {len(results)} mod name(s)", 3000)
 
     def _on_names_error(self, msg: str):
