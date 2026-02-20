@@ -66,6 +66,27 @@ def build_mod_id_to_workshop_map(
     return {m.mod_id: m.workshop_id for m in mods}
 
 
+def extract_mod_id_from_description(text: str) -> str | None:
+    """Try to extract a PZ Mod ID from a raw workshop description.
+
+    Strips BBCode tags first, then searches for common patterns authors use
+    to document their mod IDs (e.g. "Mod ID: SomeMod" or "id=SomeMod").
+    Returns the first plausible match, or None.
+    """
+    stripped = re.sub(r"\[[^\]]*\]", "", text)
+    patterns = [
+        r"[Mm]od\s*[Ii][Dd]\s*[=:]\s*([\w.-]+)",
+        r"\bid\s*=\s*([\w.-]+)",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, stripped)
+        if m:
+            candidate = m.group(1).strip(".,;:!? \t")
+            if candidate:
+                return candidate
+    return None
+
+
 def build_workshop_to_mod_ids_map(
     mods: list[WorkshopModInfo],
 ) -> dict[str, list[str]]:

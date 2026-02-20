@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from pz_mod_manager.models.mod import Mod
 from pz_mod_manager.services.steam_api_service import SteamApiError, SteamApiService
+from pz_mod_manager.services.workshop_scanner import extract_mod_id_from_description
 
 # Known PZ workshop tags — used when the Steam tag API is unavailable.
 _FALLBACK_TAGS = [
@@ -63,6 +64,7 @@ _BB_SIMPLE: list[tuple[str, str]] = [
     ("th", "th"),
     ("td", "td"),
 ]
+
 
 
 def _bbcode_to_html(text: str) -> str:
@@ -205,9 +207,15 @@ class _FetchImageWorker(QObject):
 class SearchWorkshopDialog(QDialog):
     mod_selected = Signal(object)  # Mod
 
-    def __init__(self, api_service: SteamApiService, parent=None):
+    def __init__(
+        self,
+        api_service: SteamApiService,
+        ws_to_mods: dict[str, list[str]] | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self._api_service = api_service
+        self._ws_to_mods = ws_to_mods or {}
         self._current_page = 1
         self._total_results = 0
         self._results: list[dict] = []
@@ -301,10 +309,7 @@ class SearchWorkshopDialog(QDialog):
         )
         right_layout.addWidget(self._desc_browser, stretch=1)
 
-        self._mod_id_hint = QLabel(
-            "Mod ID will be blank after adding — double-click the Mod ID cell in the "
-            "table to fill it in from the mod's mod.info file."
-        )
+        self._mod_id_hint = QLabel()
         self._mod_id_hint.setWordWrap(True)
         self._mod_id_hint.setObjectName("hintLabel")
         self._mod_id_hint.setVisible(False)
@@ -523,14 +528,41 @@ class SearchWorkshopDialog(QDialog):
         if not self._selected_item:
             return
 
+        workshop_id = self._selected_item["publishedfileid"]
+
+        # 1. Try local workshop scan (most reliable).
+        local_ids = self._ws_to_mods.get(workshop_id, [])
+        mod_id = local_ids[0] if local_ids else ""
+        hint_source = "local"
+
+        # 2. Fall back to parsing the description.
+        if not mod_id:
+            raw_desc = (
+                self._selected_item.get("file_description", "")
+                or self._selected_item.get("short_description", "")
+            )
+            mod_id = extract_mod_id_from_description(raw_desc) or ""
+            hint_source = "description" if mod_id else "none"
+
         mod = Mod(
-            mod_id="",
-            workshop_id=self._selected_item["publishedfileid"],
+            mod_id=mod_id,
+            workshop_id=workshop_id,
             name=self._selected_item.get("title", ""),
             enabled=True,
         )
         self.mod_selected.emit(mod)
 
+        if hint_source == "local":
+            self._mod_id_hint.setText(f"Mod ID auto-filled from local files: {mod_id}")
+        elif hint_source == "description":
+            self._mod_id_hint.setText(
+                f"Mod ID extracted from description: {mod_id} — verify it's correct."
+            )
+        else:
+            self._mod_id_hint.setText(
+                "Mod ID is blank — double-click the Mod ID cell in the table to "
+                "fill it in from the mod's mod.info file."
+            )
         self._mod_id_hint.setVisible(True)
         self._add_btn.setText("Added!")
         self._add_btn.setEnabled(False)

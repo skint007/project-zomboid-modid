@@ -31,6 +31,7 @@ from pz_mod_manager.services.workshop_scanner import (
     scan_workshop_content,
     build_mod_id_to_workshop_map,
     build_workshop_to_mod_ids_map,
+    extract_mod_id_from_description,
 )
 from pz_mod_manager.utils.constants import COLUMN_WORKSHOP_ID
 
@@ -507,6 +508,37 @@ class MainWindow(QMainWindow):
                         mod.name = info.name
                     updated += 1
 
+        # For mods with a blank Mod ID, try to fill it in.
+        blank_mods = [m for m in mods if not m.mod_id and m.workshop_id]
+        if blank_mods:
+            # Step 1: reverse-lookup from local scan.
+            still_blank = []
+            for mod in blank_mods:
+                local_ids = ws_to_mods.get(mod.workshop_id, [])
+                if local_ids:
+                    mod.mod_id = local_ids[0]
+                    updated += 1
+                else:
+                    still_blank.append(mod)
+
+            # Step 2: fetch Steam descriptions and parse for remaining blanks.
+            if still_blank and self._settings.api_key:
+                api_service = SteamApiService(self._settings.api_key)
+                workshop_ids = [m.workshop_id for m in still_blank]
+                try:
+                    details = api_service.fetch_mod_details(workshop_ids)
+                    details_map = {d["publishedfileid"]: d for d in details}
+                    for mod in still_blank:
+                        detail = details_map.get(mod.workshop_id)
+                        if detail:
+                            raw = detail.get("file_description", "")
+                            extracted = extract_mod_id_from_description(raw)
+                            if extracted:
+                                mod.mod_id = extracted
+                                updated += 1
+                except SteamApiError:
+                    pass
+
         self._model.set_mods(mods)
         self._dirty = True
         self._update_status()
@@ -574,8 +606,13 @@ class MainWindow(QMainWindow):
     def _on_search_workshop(self):
         from pz_mod_manager.views.search_workshop_dialog import SearchWorkshopDialog
 
+        ws_to_mods: dict[str, list[str]] = {}
+        if self._settings.workshop_path:
+            results = scan_workshop_content(Path(self._settings.workshop_path))
+            ws_to_mods = build_workshop_to_mod_ids_map(results)
+
         api_service = SteamApiService(self._settings.api_key)
-        dialog = SearchWorkshopDialog(api_service, self)
+        dialog = SearchWorkshopDialog(api_service, ws_to_mods, self)
         dialog.mod_selected.connect(self._on_mod_from_search)
         dialog.exec()
 
