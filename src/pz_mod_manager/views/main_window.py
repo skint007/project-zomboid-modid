@@ -143,6 +143,13 @@ class MainWindow(QMainWindow):
         edit_menu = menubar.addMenu("&Edit")
         self._act_add = edit_menu.addAction("&Add Mod...")
         self._act_add.setShortcut(QKeySequence("Ctrl+N"))
+        self._act_search_workshop = edit_menu.addAction("&Search Workshop...")
+        self._act_search_workshop.setShortcut(QKeySequence("Ctrl+Shift+F"))
+        self._act_search_workshop.setEnabled(bool(self._settings.api_key))
+        if not self._settings.api_key:
+            self._act_search_workshop.setToolTip(
+                "Set a Steam API key in Settings to enable Workshop search"
+            )
         self._act_remove = edit_menu.addAction("&Remove Selected")
         self._act_remove.setShortcut(QKeySequence.StandardKey.Delete)
         edit_menu.addSeparator()
@@ -173,6 +180,7 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self._act_remove)
         toolbar.addSeparator()
         self._act_scan = toolbar.addAction("Scan Workshop")
+        toolbar.addAction(self._act_search_workshop)
         self._act_refresh = toolbar.addAction("Refresh Names")
 
     def _setup_connections(self):
@@ -191,6 +199,7 @@ class MainWindow(QMainWindow):
         self._act_server_settings.triggered.connect(self._on_server_settings)
         self._act_settings.triggered.connect(self._on_settings)
         self._act_scan.triggered.connect(self._on_scan_workshop)
+        self._act_search_workshop.triggered.connect(self._on_search_workshop)
         self._act_refresh.triggered.connect(self._on_refresh_names)
         self._act_about.triggered.connect(self._on_about)
         self._table.customContextMenuRequested.connect(self._on_context_menu)
@@ -562,6 +571,20 @@ class MainWindow(QMainWindow):
         if dialog.exec():
             self.statusBar().showMessage("Server settings saved", 3000)
 
+    def _on_search_workshop(self):
+        from pz_mod_manager.views.search_workshop_dialog import SearchWorkshopDialog
+
+        api_service = SteamApiService(self._settings.api_key)
+        dialog = SearchWorkshopDialog(api_service, self)
+        dialog.mod_selected.connect(self._on_mod_from_search)
+        dialog.exec()
+
+    def _on_mod_from_search(self, mod: Mod):
+        self._model.add_mod(mod)
+        self.statusBar().showMessage(
+            f"Added mod: {mod.name or mod.mod_id}", 3000
+        )
+
     # ── Settings / About ──────────────────────────────────────
 
     def _on_settings(self):
@@ -569,6 +592,12 @@ class MainWindow(QMainWindow):
 
         dialog = SettingsDialog(self._settings, self)
         dialog.exec()
+
+        has_key = bool(self._settings.api_key)
+        self._act_search_workshop.setEnabled(has_key)
+        self._act_search_workshop.setToolTip(
+            "" if has_key else "Set a Steam API key in Settings to enable Workshop search"
+        )
 
     def _on_about(self):
         version = QApplication.applicationVersion() or "dev"
