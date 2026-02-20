@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import re
+
 import requests
 
 from PySide6.QtCore import QObject, QThread, Qt, QTimer, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -14,8 +16,8 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QScrollArea,
     QSplitter,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -44,6 +46,98 @@ _FALLBACK_TAGS = [
     "Utility",
     "Mechanics",
 ]
+
+# BBCode tags that map directly to an HTML tag.
+_BB_SIMPLE: list[tuple[str, str]] = [
+    ("b", "b"),
+    ("i", "i"),
+    ("u", "u"),
+    ("s", "s"),
+    ("strike", "s"),
+    ("h1", "h2"),
+    ("h2", "h3"),
+    ("h3", "h4"),
+    ("code", "code"),
+    ("table", "table"),
+    ("tr", "tr"),
+    ("th", "th"),
+    ("td", "td"),
+]
+
+
+def _bbcode_to_html(text: str) -> str:
+    """Convert Steam Workshop BBCode markup to HTML for display in QTextBrowser."""
+    # Escape HTML entities first so literal < > & in descriptions survive.
+    text = text.replace("&", "&amp;")
+    text = text.replace("<", "&lt;")
+    text = text.replace(">", "&gt;")
+
+    # Simple open/close paired tags.
+    for bb, html in _BB_SIMPLE:
+        text = re.sub(rf"\[{bb}\]", f"<{html}>", text, flags=re.IGNORECASE)
+        text = re.sub(rf"\[/{bb}\]", f"</{html}>", text, flags=re.IGNORECASE)
+
+    # [url=link]label[/url]
+    text = re.sub(
+        r"\[url=([^\]]+)\](.*?)\[/url\]",
+        r'<a href="\1">\2</a>',
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    # [url]link[/url]
+    text = re.sub(
+        r"\[url\](.*?)\[/url\]",
+        r'<a href="\1">\1</a>',
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # [img]url[/img] — show as a clickable placeholder rather than loading inline.
+    text = re.sub(
+        r"\[img\](.*?)\[/img\]",
+        r'<a href="\1">[image]</a>',
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # [quote] / [quote=user]
+    text = re.sub(r"\[quote=[^\]]+\]", "<blockquote>", text, flags=re.IGNORECASE)
+    text = re.sub(r"\[quote\]", "<blockquote>", text, flags=re.IGNORECASE)
+    text = re.sub(r"\[/quote\]", "</blockquote>", text, flags=re.IGNORECASE)
+
+    # Lists
+    text = re.sub(r"\[list\]", "<ul>", text, flags=re.IGNORECASE)
+    text = re.sub(r"\[/list\]", "</ul>", text, flags=re.IGNORECASE)
+    text = re.sub(r"\[olist\]", "<ol>", text, flags=re.IGNORECASE)
+    text = re.sub(r"\[/olist\]", "</ol>", text, flags=re.IGNORECASE)
+    text = re.sub(r"\[\*\]", "<li>", text, flags=re.IGNORECASE)
+
+    # [hr]
+    text = re.sub(r"\[hr\]", "<hr>", text, flags=re.IGNORECASE)
+
+    # [noparse]...[/noparse] — content is already HTML-escaped above; just unwrap.
+    text = re.sub(
+        r"\[noparse\](.*?)\[/noparse\]",
+        r"\1",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # [spoiler]...[/spoiler]
+    text = re.sub(
+        r"\[spoiler\](.*?)\[/spoiler\]",
+        r"<i>\1</i>",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # Strip any remaining unknown [tags].
+    text = re.sub(r"\[/?[a-zA-Z][^\]]*\]", "", text)
+
+    # Newlines → <br>.
+    text = text.replace("\r\n", "<br>").replace("\r", "<br>").replace("\n", "<br>")
+
+    return text
 
 
 class _FetchTagsWorker(QObject):
@@ -200,22 +294,12 @@ class SearchWorkshopDialog(QDialog):
         self._subs_label.setObjectName("hintLabel")
         right_layout.addWidget(self._subs_label)
 
-        desc_scroll = QScrollArea()
-        desc_scroll.setWidgetResizable(True)
-        desc_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        self._desc_browser = QTextBrowser()
+        self._desc_browser.setOpenLinks(False)
+        self._desc_browser.anchorClicked.connect(
+            lambda url: QDesktopServices.openUrl(url)
         )
-        self._desc_label = QLabel()
-        self._desc_label.setWordWrap(True)
-        self._desc_label.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
-        )
-        self._desc_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        self._desc_label.setContentsMargins(4, 4, 4, 4)
-        desc_scroll.setWidget(self._desc_label)
-        right_layout.addWidget(desc_scroll, stretch=1)
+        right_layout.addWidget(self._desc_browser, stretch=1)
 
         self._mod_id_hint = QLabel(
             "Mod ID will be blank after adding — double-click the Mod ID cell in the "
@@ -359,7 +443,7 @@ class SearchWorkshopDialog(QDialog):
             or item.get("short_description")
             or "(No description)"
         )
-        self._desc_label.setText(desc)
+        self._desc_browser.setHtml(_bbcode_to_html(desc))
 
         preview_url = item.get("preview_url", "")
         self._preview_label.clear()
@@ -375,7 +459,7 @@ class SearchWorkshopDialog(QDialog):
         self._title_label.setText("Select a result to see details")
         self._tags_label.clear()
         self._subs_label.clear()
-        self._desc_label.clear()
+        self._desc_browser.clear()
         self._preview_label.clear()
         self._mod_id_hint.setVisible(False)
 
