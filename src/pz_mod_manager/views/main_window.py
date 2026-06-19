@@ -653,6 +653,10 @@ class MainWindow(QMainWindow):
         if not index.isValid():
             return
 
+        source_idx = self._proxy.mapToSource(index)
+        row = source_idx.row()
+        mod = self._model.mods[row]
+
         menu = QMenu(self)
         act_enable = menu.addAction("Enable")
         act_disable = menu.addAction("Disable")
@@ -660,13 +664,13 @@ class MainWindow(QMainWindow):
         act_remove = menu.addAction("Remove")
         menu.addSeparator()
         act_open_ws = menu.addAction("Open in Steam Workshop")
+        act_fetch_id = menu.addAction("Fetch Mod ID from Workshop")
+        act_fetch_id.setEnabled(bool(mod.workshop_id and self._settings.api_key))
 
         action = menu.exec(self._table.viewport().mapToGlobal(pos))
         if action is None:
             return
 
-        source_idx = self._proxy.mapToSource(index)
-        row = source_idx.row()
         mods = self._model.mods
         mod = mods[row]
 
@@ -684,8 +688,46 @@ class MainWindow(QMainWindow):
             webbrowser.open(
                 f"https://steamcommunity.com/sharedfiles/filedetails/?id={mod.workshop_id}"
             )
+        elif action == act_fetch_id:
+            self._fetch_mod_id_from_workshop(mods, row)
 
         self._update_status()
+
+    def _fetch_mod_id_from_workshop(self, mods: list, row: int) -> None:
+        mod = mods[row]
+        api_service = SteamApiService(self._settings.api_key)
+        try:
+            details = api_service.fetch_mod_details([mod.workshop_id])
+        except SteamApiError as e:
+            QMessageBox.warning(self, "Fetch Failed", f"Could not reach Steam API:\n{e}")
+            return
+
+        if not details:
+            QMessageBox.warning(
+                self, "Not Found", f"No details returned for workshop ID {mod.workshop_id}."
+            )
+            return
+
+        detail = details[0]
+        raw = detail.get("file_description", "")
+        extracted = extract_mod_id_from_description(raw)
+
+        if not extracted:
+            QMessageBox.information(
+                self,
+                "Mod ID Not Found",
+                f"Could not find a Mod ID in the workshop description for:\n"
+                f"{detail.get('title', mod.workshop_id)}\n\n"
+                "You may need to enter it manually.",
+            )
+            return
+
+        mod.mod_id = extracted
+        if not mod.name and detail.get("title"):
+            mod.name = detail["title"]
+        self._model.set_mods(mods)
+        self._dirty = True
+        self.statusBar().showMessage(f"Mod ID set to: {extracted}", 4000)
 
     # ── Helpers ────────────────────────────────────────────────
 
